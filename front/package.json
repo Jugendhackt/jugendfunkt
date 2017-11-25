@@ -9,9 +9,10 @@
     "babelify": "^7.3.0",
     "browserify": "^14.4.0",
     "cross-env": "^5.0.5",
-    "uglify-js": "^3.0.27"
+    "uglify-js": "^3.0.27",
+    "webrtc-adapter": "^6.0.2"
+
   },
   "dependencies": {
-    "webrtc-adapter": "^6.0.2"
   }
 }
