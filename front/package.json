@@ -1,0 +1,17 @@
+{
+  "scripts": {
+    "build:dev": "mkdir -p dist; browserify src/main.js -t babelify -d -o dist/main.js",
+    "build:prod": "mkdir -p dist; cross-env NODE_ENV=production browserify src/main.js -t babelify | uglifyjs -c -m > dist/main.js"
+  },
+  "devDependencies": {
+    "babel-cli": "^6.26.0",
+    "babel-preset-env": "^1.6.0",
+    "babelify": "^7.3.0",
+    "browserify": "^14.4.0",
+    "cross-env": "^5.0.5",
+    "uglify-js": "^3.0.27"
+  },
+  "dependencies": {
+    "webrtc-adapter": "^6.0.2"
+  }
+}
