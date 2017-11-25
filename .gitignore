@@ -2,3 +2,4 @@ front/node_modules
 front/dist
 front/yarn-error.log
 server/node_modules
+*.idea
