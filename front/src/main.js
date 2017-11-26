@@ -1,4 +1,5 @@
 import * as p from './protocol';
+import CBOR from 'cbor-js';
 
 console.log("Starting up")
 let config = {"iceServers":[{url:'stun:stun.1.google.com:19302'},{url:'turn:numb.viagenie.ca',credential: 'muazkh', username: 'webrtc@live.com'}]};
@@ -11,6 +12,7 @@ let channels = {}
 
 let setup = {}
 
+let lastChunks = [];
 
 // in ms
 let preSend = 5000;
@@ -24,8 +26,6 @@ socket.onmessage = function(msg){
 	let parsed = JSON.parse(header["payload"])
 	let id = header["id"]
 	console.log(id, parsed)
-
-
 
 	if(parsed["type"] == "new_client"){
 		console.log("New client joined, gonna send msg")
@@ -48,8 +48,6 @@ socket.onmessage = function(msg){
 
 			delete setup[id]
 			console.log(channels)
-
-			broadcast("New User connected")
 		};
 
 		setup[id].createOffer()
@@ -75,7 +73,7 @@ socket.onmessage = function(msg){
 
 		setup[id] = setup_socket("client");
 		setup[id].setRemoteDescription(parsed).then(() => setup[id].createAnswer()).then(awnser => setup[id].setLocalDescription(awnser)).then(() => JSON.stringify(setup[id].localDescription)).then(encoded => socket.send(encoded))
-		
+
 		console.log(setup[id])
 
 	}else{
@@ -186,7 +184,7 @@ function startBroadcasting() {
 function sendData() {
 	while(data.length > 0 && data[0].time <= Date.now() + preSend) {
 		var msg = new p.Message(p.msgType.payload, Date.now(), null, data[0]);
-		broadcast(p.encodeMsg(msg));
+		broadcastChunked(p.encodeMsg(msg));
 		data.splice(0, 1);
 	}
 	window.setTimeout(sendData, p.chunkTime);
@@ -203,3 +201,32 @@ var roleWaitInterval = window.setInterval(function () {
 		}
 	}
 }, 300);
+
+function broadcastChunked(msg, i) {
+	function encodeChunk(msg, i, last) {
+		return CBOR.encode({
+			index: i,
+			last: last,
+			msg: msg
+		});
+	}
+	// length > 10KiB => splitting needed
+	const maxLength = 10240;
+	if(msg.length > maxLength) {
+		var now = msg.splice(0, maxLength);
+		broadcast(encodeChunk(msg, i, false));
+		sendChunked(msg, i + 1);
+	} else {
+		broadcast(encodeChunk(msg, i, true));
+	}
+}
+
+function handleChunk(payload) {
+	var chunk = CBOR.decode(payload);
+	lastChunks[chunk.index] = msg;
+	if(chunk.last) {
+		return lastChunks;
+	} else {
+		return null;
+	}
+}
