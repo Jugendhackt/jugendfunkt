@@ -3,11 +3,14 @@ import * as p from './protocol';
 console.log("Starting up")
 let config = {"iceServers":[{url:'stun:stun.1.google.com:19302'},{url:'turn:numb.viagenie.ca',credential: 'muazkh', username: 'webrtc@live.com'}]};
 
-let c = null;
-let socket = new WebSocket("ws://10.23.41.224:3000")
+let socket = new WebSocket("ws://10.23.40.240:3000")
 let sendChannel = null;
 let role = null;
-let channels = []
+let channels = {}
+
+
+let setup = {}
+
 
 // in ms
 let preSend = 5000;
@@ -16,49 +19,64 @@ let data = null;
 
 socket.onmessage = function(msg){
 
-	let parsed = JSON.parse(msg.data)
-	console.log(parsed)
+	console.log(msg)
+	let header = JSON.parse(msg.data)
+	let parsed = JSON.parse(header["payload"])
+	let id = header["id"]
+	console.log(id, parsed)
+
+
 
 	if(parsed["type"] == "new_client"){
 		console.log("New client joined, gonna send msg")
 
 		role = "server";
 
-		c = setup_socket("server");
+		setup[id] = setup_socket("server");
 
 		//setup new channel
-		let dataChannel = c.createDataChannel("sendChannel");
-		dataChannel.onmessage = on_client_msg
+		let dataChannel = setup[id].createDataChannel("sendChannel");
 
-		dataChannel.onopen = function(channel){
-      dataChannel.binaryType = "arraybuffer";
-			channels.push(dataChannel)
+
+		dataChannel.onmessage = on_client_msg
+		dataChannel.parent_id = id
+
+		dataChannel.onopen =  function(channel){
+			dataChannel.binaryType = "arraybuffer";
+
+			channels[id] = dataChannel
+
+			delete setup[id]
+			console.log(channels)
+
+			broadcast("New User connected")
 		};
 
-		c.createOffer()
+		setup[id].createOffer()
 		.then(desc => {
-			c.setLocalDescription(desc);
+			setup[id].setLocalDescription(desc);
 		})
-		.then(() => c.localDescription)
+		.then(() => setup[id].localDescription)
 		.then(offer => JSON.stringify(offer))
 		.then(encoded => socket.send(encoded))
 
 	}else if(parsed["type"] == "answer"){
 
-		c.setRemoteDescription(parsed).then(() => console.log(c))
+		setup[id].setRemoteDescription(parsed)
 		console.log("Awneser received")
 
 	}else if(parsed["type"] == "ice_canidate"){
 
-		c.addIceCandidate(parsed["candidate"])
+		setup[id].addIceCandidate(parsed["candidate"])
 
 	}else if (parsed["type"] == "offer"){
 
 		role = "client";
 
-		c = setup_socket("client");
-		c.setRemoteDescription(parsed).then(() => c.createAnswer()).then(awnser => c.setLocalDescription(awnser)).then(() => JSON.stringify(c.localDescription)).then(encoded => socket.send(encoded))
-		console.log(c)
+		setup[id] = setup_socket("client");
+		setup[id].setRemoteDescription(parsed).then(() => setup[id].createAnswer()).then(awnser => setup[id].setLocalDescription(awnser)).then(() => JSON.stringify(setup[id].localDescription)).then(encoded => socket.send(encoded))
+		
+		console.log(setup[id])
 
 	}else{
 		console.log(parsed)
@@ -78,15 +96,6 @@ function setup_socket(){
 			}));
 		};
 
-	chan.oniceconnectionstatechange = function(evt){
-		console.log(chan.iceConnectionState)
-		if(chan.iceConnectionState == "COMPLETED"){
-
-			if(role == "server"){
-				chan = null;
-			}
-		}
-	}
 
 	if(role == "client"){
 		chan.ondatachannel = function(evt){
@@ -111,15 +120,13 @@ function on_server_msg(evt){
 }
 
 function broadcast(msg){
-	channels.forEach(function(client, index){
+	Object.keys(channels).forEach(function(client){
 		try{
-			client.send(msg)
+			channels[client].send(msg)
 		}catch(err){
-			console.log("err: " + err);
-			console.log(channels[index].readyState);
-			channels.splice(index, 1);
-		}
-	});
+			delete channels[client]
+	};
+	})
 }
 
 var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
