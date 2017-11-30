@@ -113,8 +113,36 @@ function on_client_msg(evt){
 	console.log("Some Client wrote", evt.data)
 }
 
+
+function concatBuffers(bufList) {
+	var totalLength = 0
+	for(var i = 0; i < bufList.length; i++) {
+		totalLength += bufList[i].msg.byteLength
+		console.log(typeof bufList[i].msg);
+	}
+	console.log(totalLength);
+
+	var buffer = new ArrayBuffer(totalLength);
+
+	for(var i = 0; i < bufList.length; i++) {
+		var len = 0
+		for(var j = 0; j <= i; j++) {
+			len += bufList[j].msg.byteLength
+		}
+		for(var k = 0; k < bufList[i].msg.byteLength; k++) {
+			buffer[len + k] = bufList[i].msg[k];
+			console.log(len + k);
+		}
+	}
+	return buffer;
+}
+
 function on_server_msg(evt){
-	console.log("the server wrote", evt.data)
+	var result = handleChunk(evt.data);
+	if(result !== null) {
+		console.log(p.decodeMsg(concatBuffers(result)));
+		lastChunks = [];
+	}
 }
 
 function broadcast(msg){
@@ -163,7 +191,7 @@ function processChunks(n) {
 		if(samples[0].length > 0) {
 			var chunkSamples = new Array(channelCount);
 			for(var j = 0; j < channelCount; j++) {
-				var cutMark = sampleRate * (p.chunkTime / 1000) + 1;
+				var cutMark = sampleRate * (p.chunkTime / 1000);
 				chunkSamples[j] = Array.from(samples[j].slice(0, cutMark));
 				samples[j] = samples[j].slice(cutMark);
 			}
@@ -184,7 +212,7 @@ function startBroadcasting() {
 function sendData() {
 	while(data.length > 0 && data[0].time <= Date.now() + preSend) {
 		var msg = new p.Message(p.msgType.payload, Date.now(), null, data[0]);
-		broadcastChunked(p.encodeMsg(msg));
+		broadcastChunked(p.encodeMsg(msg), 0);
 		data.splice(0, 1);
 	}
 	window.setTimeout(sendData, p.chunkTime);
@@ -211,11 +239,11 @@ function broadcastChunked(msg, i) {
 		});
 	}
 	// length > 10KiB => splitting needed
-	const maxLength = 10240;
-	if(msg.length > maxLength) {
-		var now = msg.splice(0, maxLength);
-		broadcast(encodeChunk(msg, i, false));
-		sendChunked(msg, i + 1);
+	const maxLength = 1000;
+	if(msg.byteLength > maxLength) {
+		var now = msg.slice(0, maxLength);
+		broadcast(encodeChunk(now, i, false));
+		broadcastChunked(msg.slice(maxLength), i + 1);
 	} else {
 		broadcast(encodeChunk(msg, i, true));
 	}
@@ -223,7 +251,7 @@ function broadcastChunked(msg, i) {
 
 function handleChunk(payload) {
 	var chunk = CBOR.decode(payload);
-	lastChunks[chunk.index] = msg;
+	lastChunks[chunk.index] = chunk.msg;
 	if(chunk.last) {
 		return lastChunks;
 	} else {
